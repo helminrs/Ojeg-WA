@@ -19,8 +19,14 @@
     .card { background: white; border-radius: 12px; padding: 15px; border: 1px solid #eee; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     
     label { font-size: 11px; font-weight: bold; color: #555; text-transform: uppercase; display: block; margin-bottom: 6px; }
-    input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 13px; margin-bottom: 12px; outline: none; }
+    input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 13px; margin-bottom: 10px; outline: none; }
     input:focus, textarea:focus { border-color: #2e7d32; }
+
+    /* Auto Complete Search Box Suggestions */
+    .search-wrapper { position: relative; margin-bottom: 10px; }
+    .suggestions-list { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ccc; border-top: none; border-radius: 0 0 8px 8px; max-height: 160px; overflow-y: auto; z-index: 1000; display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .suggestion-item { padding: 8px 12px; font-size: 12px; cursor: pointer; border-bottom: 1px solid #eee; }
+    .suggestion-item:hover { background-color: #f0fdf4; }
 
     /* Map Styling */
     #map { width: 100%; height: 240px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #ccc; }
@@ -36,6 +42,10 @@
       line-height: 32px;
       filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4));
     }
+
+    .paste-box { display: flex; gap: 6px; margin-bottom: 12px; }
+    .paste-box input { margin-bottom: 0; flex: 1; }
+    .paste-box button { background: #0288d1; color: white; border: none; padding: 0 12px; border-radius: 8px; font-size: 11px; font-weight: bold; cursor: pointer; }
 
     .summary-box { background: #f0fdf4; border: 1px solid #c8e6c9; border-radius: 8px; padding: 12px; margin-bottom: 15px; }
     .summary-item { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
@@ -60,6 +70,20 @@
     <div class="map-btn-group">
       <div id="btn-mode-jemput" class="map-btn active" onclick="setMapMode('jemput')">📍 Atur Pin JEMPUT</div>
       <div id="btn-mode-antar" class="map-btn" onclick="setMapMode('antar')">🏁 Atur Pin TUJUAN</div>
+    </div>
+
+    <!-- PENCARIAN TEMPAT DENGAN AUTOCOMPLETE -->
+    <label>🔍 CARI NAMA TEMPAT / GEDUNG / SEKOLAH</label>
+    <div class="search-wrapper">
+      <input type="text" id="search-input" placeholder="Ketik nama tempat (mis: SMAN 1 Pameungpeuk)..." oninput="searchPlaces(this.value)">
+      <div id="suggestions" class="suggestions-list"></div>
+    </div>
+
+    <!-- PASTE LINK MAPS ATAU KOORDINAT -->
+    <label>🔗 ATAU PASTE LINK GOOGLE MAPS / KOORDINAT</label>
+    <div class="paste-box">
+      <input type="text" id="paste-input" placeholder="Tempel link maps / -7.0298, 107.5872">
+      <button type="button" onclick="processPastedLink()">Terapkan</button>
     </div>
 
     <!-- PETA INTERAKTIF LEAFLET -->
@@ -104,12 +128,11 @@
 
     let map, markerJemput, markerAntar;
     let modePin = 'jemput';
+    let searchDebounce = null;
 
-    // Lat Lng Awal (Pameungpeuk Bandung sebagai Cadangan)
     let latJemput = -7.029822, lngJemput = 107.587289;
     let latAntar = -7.027000, lngAntar = 107.589000;
 
-    // DEFINISI IKON PIN MERAH & BENDERA FINISH
     const iconJemput = L.divIcon({
       className: 'custom-pin-icon',
       html: '📍',
@@ -131,11 +154,9 @@
         attribution: '© OpenStreetMap'
       }).addTo(map);
 
-      // PENERAPAN MARKER DENGAN IKON CUSTOM
       markerJemput = L.marker([latJemput, lngJemput], { icon: iconJemput, draggable: true }).addTo(map).bindPopup("Titik Jemput");
       markerAntar = L.marker([latAntar, lngAntar], { icon: iconAntar, draggable: true }).addTo(map).bindPopup("Titik Tujuan");
 
-      // Event Drag Marker Jemput
       markerJemput.on('dragend', function (e) {
         let coord = e.target.getLatLng();
         latJemput = coord.lat;
@@ -144,7 +165,6 @@
         hitungRute();
       });
 
-      // Event Drag Marker Antar
       markerAntar.on('dragend', function (e) {
         let coord = e.target.getLatLng();
         latAntar = coord.lat;
@@ -153,7 +173,6 @@
         hitungRute();
       });
 
-      // Event Klik di Atas Peta
       map.on('click', function(e) {
         if(modePin === 'jemput') {
           latJemput = e.latlng.lat;
@@ -169,13 +188,11 @@
         hitungRute();
       });
 
-      // DETEKSI GPS HP PENUMPANG PRESISI
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(position => {
           latJemput = position.coords.latitude;
           lngJemput = position.coords.longitude;
 
-          // Default Tujuan diposisikan sedikit dekat di sekitar Lokasi Jemput pengguna (+300 meter)
           latAntar = latJemput + 0.003;
           lngAntar = lngJemput + 0.003;
 
@@ -204,6 +221,78 @@
       document.getElementById('btn-mode-antar').className = mode === 'antar' ? 'map-btn active' : 'map-btn';
     }
 
+    // PENCARIAN NAMA TEMPAT AUTOCOMPLETE
+    function searchPlaces(query) {
+      clearTimeout(searchDebounce);
+      const suggestionsBox = document.getElementById('suggestions');
+
+      if (!query || query.length < 3) {
+        suggestionsBox.style.display = 'none';
+        return;
+      }
+
+      searchDebounce = setTimeout(() => {
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&countrycodes=id&limit=5`)
+          .then(res => res.json())
+          .then(data => {
+            suggestionsBox.innerHTML = '';
+            if (data && data.length > 0) {
+              data.forEach(item => {
+                let div = document.createElement('div');
+                div.className = 'suggestion-item';
+                div.innerText = item.display_name;
+                div.onclick = function() {
+                  applyLocation(parseFloat(item.lat), parseFloat(item.lon), item.display_name);
+                  suggestionsBox.style.display = 'none';
+                  document.getElementById('search-input').value = '';
+                };
+                suggestionsBox.appendChild(div);
+              });
+              suggestionsBox.style.display = 'block';
+            } else {
+              suggestionsBox.style.display = 'none';
+            }
+          })
+          .catch(() => { suggestionsBox.style.display = 'none'; });
+      }, 400);
+    }
+
+    // MEMPROSES PASTE LINK MAPS ATAU KOORDINAT
+    function processPastedLink() {
+      const val = document.getElementById('paste-input').value.trim();
+      if(!val) return;
+
+      // Cari pola koordinat angka (-7.1234, 107.1234)
+      const coordMatch = val.match(/(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+
+      if(coordMatch) {
+        let lat = parseFloat(coordMatch[1]);
+        let lng = parseFloat(coordMatch[2]);
+        applyLocation(lat, lng);
+        document.getElementById('paste-input').value = '';
+      } else {
+        alert("Link/Koordinat tidak dikenali. Gunakan format koordinat atau link peta biasa.");
+      }
+    }
+
+    function applyLocation(lat, lng, labelText) {
+      if(modePin === 'jemput') {
+        latJemput = lat;
+        lngJemput = lng;
+        markerJemput.setLatLng([lat, lng]);
+        if(labelText) document.getElementById('alamat-jemput').value = labelText;
+        else reverseGeocode(lat, lng, 'jemput');
+      } else {
+        latAntar = lat;
+        lngAntar = lng;
+        markerAntar.setLatLng([lat, lng]);
+        if(labelText) document.getElementById('alamat-antar').value = labelText;
+        else reverseGeocode(lat, lng, 'antar');
+      }
+      map.setView([lat, lng], 15);
+      hitungRute();
+    }
+
     function reverseGeocode(lat, lng, target) {
       fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
         .then(res => res.json())
@@ -216,9 +305,8 @@
         .catch(() => {});
     }
 
-    // FUNGSI PERHITUNGAN ARGO PRESISI METRIL
     function hitungRute() {
-      const R = 6371000; // Radius bumi dalam meter
+      const R = 6371000;
       const dLat = (latAntar - latJemput) * Math.PI / 180;
       const dLon = (lngAntar - lngJemput) * Math.PI / 180;
       const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -227,12 +315,10 @@
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
       
       let jarakMeter = R * c;
-      // Koreksi estimasi jalur darat/jalan raya (+20%)
       jarakMeter = Math.round(jarakMeter * 1.20);
 
       let totalTarif = 0;
 
-      // Minimum 9.000 (1 meter - 4.5 km / 4500 meter)
       if (jarakMeter <= 4500) {
         totalTarif = 9000;
       } else {
