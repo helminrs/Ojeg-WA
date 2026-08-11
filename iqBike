@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pesan Ojeg WA - iqBike</title>
+  
+  <!-- Leaflet CSS (Peta Gratis Tanpa API Key) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #f7f7f5; color: #1a1a1a; padding: 15px; max-width: 500px; margin: 0 auto; }
+
+    .header-box { text-align: center; margin-bottom: 15px; }
+    .header-box h2 { font-size: 20px; color: #2e7d32; }
+    .header-box p { font-size: 12px; color: #666; }
+
+    .card { background: white; border-radius: 12px; padding: 15px; border: 1px solid #eee; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    
+    label { font-size: 11px; font-weight: bold; color: #555; text-transform: uppercase; display: block; margin-bottom: 6px; }
+    input, select, textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 13px; margin-bottom: 12px; outline: none; }
+    input:focus, textarea:focus { border-color: #2e7d32; }
+
+    /* Map Styling */
+    #map { width: 100%; height: 220px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #ccc; }
+    
+    .map-btn-group { display: flex; gap: 8px; margin-bottom: 12px; }
+    .map-btn { flex: 1; padding: 8px; font-size: 11px; font-weight: bold; border-radius: 6px; border: 1px solid #0288d1; background: #e3f2fd; color: #0288d1; cursor: pointer; text-align: center; }
+    .map-btn.active { background: #0288d1; color: white; }
+
+    .summary-box { background: #f0fdf4; border: 1px solid #c8e6c9; border-radius: 8px; padding: 12px; margin-bottom: 15px; }
+    .summary-item { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
+    .summary-item.total { font-weight: bold; font-size: 16px; color: #2e7d32; border-top: 1px dashed #a5d6a7; padding-top: 5px; margin-top: 5px; }
+
+    .btn-wa { width: 100%; padding: 14px; background: #25d366; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn-wa:hover { background: #1ebd56; }
+  </style>
+</head>
+<body>
+
+  <div class="header-box">
+    <h2>🛵 Pesan Ojeg WA - iqBike</h2>
+    <p>Isi data & pilih titik lokasi penjemputan di peta</p>
+  </div>
+
+  <div class="card">
+    <label>👤 NAMA PENUMPANG</label>
+    <input type="text" id="nama" placeholder="Masukkan nama Anda..." value="Penumpang WA">
+
+    <label>📍 PILIH MODE PIN PETA</label>
+    <div class="map-btn-group">
+      <div id="btn-mode-jemput" class="map-btn active" onclick="setMapMode('jemput')">📍 Atur Pin JEMPUT</div>
+      <div id="btn-mode-antar" class="map-btn" onclick="setMapMode('antar')">🏁 Atur Pin TUJUAN</div>
+    </div>
+
+    <!-- PETA INTERAKTIF -->
+    <div id="map"></div>
+
+    <label>📍 LOKASI JEMPUT (OTOMATIS/MANUAL)</label>
+    <textarea id="alamat-jemput" rows="2" placeholder="Detail jalan/patokan jemput..."></textarea>
+
+    <label>🏁 LOKASI TUJUAN (OTOMATIS/MANUAL)</label>
+    <textarea id="alamat-antar" rows="2" placeholder="Detail jalan/patokan tujuan..."></textarea>
+
+    <label>💳 METODE PEMBAYARAN</label>
+    <select id="metode-bayar">
+      <option value="Tunai (Cash)">Tunai (Cash)</option>
+      <option value="Transfer / QRIS">Transfer / QRIS</option>
+    </select>
+
+    <label>📝 CATATAN UNTUK DRIVER (OPSIONAL)</label>
+    <input type="text" id="catatan" placeholder="mis. Pakai helm sendiri / depan gerbang" value="-">
+  </div>
+
+  <div class="summary-box">
+    <div class="summary-item">
+      <span>📏 Jarak Estimasi:</span>
+      <strong id="txt-jarak">0.0 km</strong>
+    </div>
+    <div class="summary-item total">
+      <span>💰 Total Tarif:</span>
+      <strong id="txt-tarif">Rp0</strong>
+    </div>
+  </div>
+
+  <button type="button" class="btn-wa" onclick="kirimPesanWA()">
+    📲 Kirim Pesan Orderan ke Driver
+  </button>
+
+  <!-- Leaflet JS (Peta Gratis) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <script>
+    // NOMOR WA ADMIN / DRIVER SANGUP
+    const PHONE_ADMIN = "6285934602965";
+
+    // SKEMA TARIF OJEG
+    const TARIF_MINIMAL = 10000; // Tarif dasar s/d 3 km
+    const TARIF_PER_KM = 2000;    // Tarif selanjutnya per km
+
+    let map, markerJemput, markerAntar;
+    let modePin = 'jemput'; // 'jemput' atau 'antar'
+
+    // Koordinat Awal Default (Pameungpeuk Bandung)
+    let latJemput = -7.029822, lngJemput = 107.587289;
+    let latAntar = -6.966447, lngAntar = 107.585299;
+
+    function initMap() {
+      // Inisialisasi Peta
+      map = L.map('map').setView([latJemput, lngJemput], 13);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+
+      // Icon Pin Jemput (Biru/Hijau) & Antar (Merah)
+      markerJemput = L.marker([latJemput, lngJemput], { draggable: true }).addTo(map).bindPopup("Titik Jemput");
+      markerAntar = L.marker([latAntar, lngAntar], { draggable: true }).addTo(map).bindPopup("Titik Tujuan");
+
+      // Event Listener saat Pin Digeser Drag & Drop
+      markerJemput.on('dragend', function (e) {
+        let coord = e.target.getLatLng();
+        latJemput = coord.lat;
+        lngJemput = coord.lng;
+        reverseGeocode(latJemput, lngJemput, 'jemput');
+        hitungRute();
+      });
+
+      markerAntar.on('dragend', function (e) {
+        let coord = e.target.getLatLng();
+        latAntar = coord.lat;
+        lngAntar = coord.lng;
+        reverseGeocode(latAntar, lngAntar, 'antar');
+        hitungRute();
+      });
+
+      // Event Klik di Atas Peta
+      map.on('click', function(e) {
+        if(modePin === 'jemput') {
+          latJemput = e.latlng.lat;
+          lngJemput = e.latlng.lng;
+          markerJemput.setLatLng(e.latlng);
+          reverseGeocode(latJemput, lngJemput, 'jemput');
+        } else {
+          latAntar = e.latlng.lat;
+          lngAntar = e.latlng.lng;
+          markerAntar.setLatLng(e.latlng);
+          reverseGeocode(latAntar, lngAntar, 'antar');
+        }
+        hitungRute();
+      });
+
+      // Geolocation HP Penumpang (Ambil Titik Saat Ini)
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(position => {
+          latJemput = position.coords.latitude;
+          lngJemput = position.coords.longitude;
+          map.setView([latJemput, lngJemput], 14);
+          markerJemput.setLatLng([latJemput, lngJemput]);
+          reverseGeocode(latJemput, lngJemput, 'jemput');
+          hitungRute();
+        });
+      }
+
+      reverseGeocode(latJemput, lngJemput, 'jemput');
+      reverseGeocode(latAntar, lngAntar, 'antar');
+      hitungRute();
+    }
+
+    function setMapMode(mode) {
+      modePin = mode;
+      document.getElementById('btn-mode-jemput').className = mode === 'jemput' ? 'map-btn active' : 'map-btn';
+      document.getElementById('btn-mode-antar').className = mode === 'antar' ? 'map-btn active' : 'map-btn';
+    }
+
+    // Mendapatkan Alamat Teks dari Koordinat
+    function reverseGeocode(lat, lng, target) {
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+        .then(res => res.json())
+        .then(data => {
+          if(data && data.display_name) {
+            if(target === 'jemput') document.getElementById('alamat-jemput').value = data.display_name;
+            else document.getElementById('alamat-antar').value = data.display_name;
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Kalkulasi Jarak Lurus/Haversine & Formula Tarif
+    function hitungRute() {
+      const R = 6371; // Radius Bumi (km)
+      const dLat = (latAntar - latJemput) * Math.PI / 180;
+      const dLon = (lngAntar - lngJemput) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(latJemput * Math.PI / 180) * Math.cos(latAntar * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      let jarakKm = R * c;
+      
+      // Koreksi estimasi rute darat (+25%)
+      jarakKm = Math.round(jarakKm * 1.25 * 10) / 10;
+      if(jarakKm < 1) jarakKm = 1.0;
+
+      // Hitung Tarif
+      let totalTarif = TARIF_MINIMAL;
+      if(jarakKm > 3) {
+        totalTarif += Math.ceil(jarakKm - 3) * TARIF_PER_KM;
+      }
+
+      document.getElementById('txt-jarak').innerText = jarakKm.toFixed(1) + " km";
+      document.getElementById('txt-tarif').innerText = "Rp" + totalTarif.toLocaleString('id-ID');
+
+      return { jarak: jarakKm.toFixed(1), tarif: totalTarif };
+    }
+
+    // GENERATE PESAN FORMAT WA DRIVER PERFEKTIF
+    function kirimPesanWA() {
+      const nama = document.getElementById('nama').value.trim() || 'Offline';
+      const jemput = document.getElementById('alamat-jemput').value.trim();
+      const antar = document.getElementById('alamat-antar').value.trim();
+      const bayar = document.getElementById('metode-bayar').value;
+      const catatan = document.getElementById('catatan').value.trim() || '-';
+
+      if(!jemput || !antar) {
+        alert('Mohon lengkapi alamat jemput dan tujuan!');
+        return;
+      }
+
+      const calc = hitungRute();
+      const linkJemput = `https://maps.google.com/?q=${latJemput.toFixed(6)},${lngJemput.toFixed(6)}`;
+      const linkAntar = `https://maps.google.com/?q=${latAntar.toFixed(6)},${lngAntar.toFixed(6)}`;
+
+      // TEMPLATE TEKS FORMAT WA PRESIS DENGAN APLIKASI DRIVER
+      const pesanWA = 
+`*PESANAN OJEG WA BARU!*
+----------------------------------
+👤 *Nama:* ${nama}
+📍 *Jemput:* ${jemput}
+🗺️ *Rute Jemput:* ${linkJemput}
+🏁 *Tujuan:* ${antar}
+🗺️ *Rute Tujuan:* ${linkAntar}
+📏 *Jarak Estimasi Peta:* ${calc.jarak} km
+💰 *Total Tarif:* Rp${calc.tarif.toLocaleString('id-ID')}
+💳 *Bayar:* ${bayar}
+📝 *Catatan:* ${catatan}
+----------------------------------
+Terima kasih!`;
+
+      // Buka Aplikasi WA HP
+      const urlWa = `https://wa.me/${PHONE_ADMIN}?text=${encodeURIComponent(pesanWA)}`;
+      window.open(urlWa, '_blank');
+    }
+
+    window.onload = initMap;
+  </script>
+</body>
+</html>
