@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pesan Ojeg WA - iqBike</title>
   
-  <!-- Leaflet CSS (Peta Gratis) -->
+  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   
   <style>
@@ -28,6 +28,14 @@
     .map-btn-group { display: flex; gap: 8px; margin-bottom: 12px; }
     .map-btn { flex: 1; padding: 8px; font-size: 11px; font-weight: bold; border-radius: 6px; border: 1px solid #0288d1; background: #e3f2fd; color: #0288d1; cursor: pointer; text-align: center; }
     .map-btn.active { background: #0288d1; color: white; }
+
+    /* Custom Marker Style */
+    .custom-pin-icon {
+      font-size: 32px;
+      text-align: center;
+      line-height: 32px;
+      filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4));
+    }
 
     .summary-box { background: #f0fdf4; border: 1px solid #c8e6c9; border-radius: 8px; padding: 12px; margin-bottom: 15px; }
     .summary-item { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
@@ -101,16 +109,31 @@
     let latJemput = -7.029822, lngJemput = 107.587289;
     let latAntar = -7.027000, lngAntar = 107.589000;
 
+    // DEFINISI IKON PIN MERAH & BENDERA FINISH
+    const iconJemput = L.divIcon({
+      className: 'custom-pin-icon',
+      html: '📍',
+      iconSize: [32, 32],
+      iconAnchor: [16, 32]
+    });
+
+    const iconAntar = L.divIcon({
+      className: 'custom-pin-icon',
+      html: '🏁',
+      iconSize: [32, 32],
+      iconAnchor: [16, 32]
+    });
+
     function initMap() {
-      // Inisialisasi Peta
       map = L.map('map').setView([latJemput, lngJemput], 15);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
       }).addTo(map);
 
-      markerJemput = L.marker([latJemput, lngJemput], { draggable: true }).addTo(map).bindPopup("Titik Jemput");
-      markerAntar = L.marker([latAntar, lngAntar], { draggable: true }).addTo(map).bindPopup("Titik Tujuan");
+      // PENERAPAN MARKER DENGAN IKON CUSTOM
+      markerJemput = L.marker([latJemput, lngJemput], { icon: iconJemput, draggable: true }).addTo(map).bindPopup("Titik Jemput");
+      markerAntar = L.marker([latAntar, lngAntar], { icon: iconAntar, draggable: true }).addTo(map).bindPopup("Titik Tujuan");
 
       // Event Drag Marker Jemput
       markerJemput.on('dragend', function (e) {
@@ -193,7 +216,7 @@
         .catch(() => {});
     }
 
-    // FUNGSI PERHITUNGAN ARGO BARU (PRESISI METRIL)
+    // FUNGSI PERHITUNGAN ARGO PRESISI METRIL
     function hitungRute() {
       const R = 6371000; // Radius bumi dalam meter
       const dLat = (latAntar - latJemput) * Math.PI / 180;
@@ -209,18 +232,16 @@
 
       let totalTarif = 0;
 
-      // 1. Minimum 9.000 (1 meter - 4.5 km / 4500 meter)
+      // Minimum 9.000 (1 meter - 4.5 km / 4500 meter)
       if (jarakMeter <= 4500) {
         totalTarif = 9000;
       } else {
-        // Sisa jarak di atas 4500 meter
         let sisaMeter = jarakMeter - 4500;
         let kmUtama = Math.floor(sisaMeter / 1000);
         let sisaM = sisaMeter % 1000;
 
         totalTarif = 9000 + (kmUtama * 2000);
 
-        // Aturan Penambahan Sisa Meter
         if (sisaM >= 1 && sisaM <= 249) {
           totalTarif += 500;
         } else if (sisaM >= 250 && sisaM <= 499) {
