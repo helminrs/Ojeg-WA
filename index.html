@@ -24,9 +24,9 @@
 
     /* Auto Complete Search Box Suggestions */
     .search-wrapper { position: relative; margin-bottom: 10px; }
-    .suggestions-list { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ccc; border-top: none; border-radius: 0 0 8px 8px; max-height: 160px; overflow-y: auto; z-index: 1000; display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-    .suggestion-item { padding: 8px 12px; font-size: 12px; cursor: pointer; border-bottom: 1px solid #eee; }
-    .suggestion-item:hover { background-color: #f0fdf4; }
+    .suggestions-list { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ccc; border-top: none; border-radius: 0 0 8px 8px; max-height: 180px; overflow-y: auto; z-index: 2000; display: none; box-shadow: 0 4px 10px rgba(0,0,0,0.15); }
+    .suggestion-item { padding: 10px 12px; font-size: 12px; cursor: pointer; border-bottom: 1px solid #eee; line-height: 1.3; }
+    .suggestion-item:hover { background-color: #f0fdf4; color: #2e7d32; }
 
     /* Map Styling */
     #map { width: 100%; height: 240px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #ccc; }
@@ -34,6 +34,396 @@
     .map-btn-group { display: flex; gap: 8px; margin-bottom: 12px; }
     .map-btn { flex: 1; padding: 8px; font-size: 11px; font-weight: bold; border-radius: 6px; border: 1px solid #0288d1; background: #e3f2fd; color: #0288d1; cursor: pointer; text-align: center; }
     .map-btn.active { background: #0288d1; color: white; }
+
+    /* Custom Marker Style */
+    .custom-pin-icon {
+      font-size: 32px;
+      text-align: center;
+      line-height: 32px;
+      filter: drop-shadow(0px 3px 3px rgba(0,0,0,0.4));
+    }
+
+    .paste-box { display: flex; gap: 6px; margin-bottom: 12px; }
+    .paste-box input { margin-bottom: 0; flex: 1; }
+    .paste-box button { background: #0288d1; color: white; border: none; padding: 0 12px; border-radius: 8px; font-size: 11px; font-weight: bold; cursor: pointer; }
+
+    .summary-box { background: #f0fdf4; border: 1px solid #c8e6c9; border-radius: 8px; padding: 12px; margin-bottom: 15px; }
+    .summary-item { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
+    .summary-item.total { font-weight: bold; font-size: 16px; color: #2e7d32; border-top: 1px dashed #a5d6a7; padding-top: 5px; margin-top: 5px; }
+
+    .btn-wa { width: 100%; padding: 14px; background: #25d366; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn-wa:hover { background: #1ebd56; }
+  </style>
+</head>
+<body>
+
+  <div class="header-box">
+    <h2>🛵 Pesan Ojeg WA - iqBike</h2>
+    <p>Isi data & pilih titik lokasi penjemputan di peta</p>
+  </div>
+
+  <div class="card">
+    <label>👤 NAMA PENUMPANG</label>
+    <input type="text" id="nama" placeholder="Masukkan nama Anda..." value="Penumpang WA">
+
+    <label>📍 PILIH MODE PIN PETA</label>
+    <div class="map-btn-group">
+      <div id="btn-mode-jemput" class="map-btn active" onclick="setMapMode('jemput')">📍 Atur Pin JEMPUT</div>
+      <div id="btn-mode-antar" class="map-btn" onclick="setMapMode('antar')">🏁 Atur Pin TUJUAN</div>
+    </div>
+
+    <!-- PENCARIAN TEMPAT DENGAN PRIORITAS LOKASI SEKITAR -->
+    <label>🔍 CARI NAMA TEMPAT / GEDUNG / SEKOLAH</label>
+    <div class="search-wrapper">
+      <input type="text" id="search-input" placeholder="Ketik SMAN 1 Banjaran / PT Weharima..." oninput="searchPlaces(this.value)">
+      <div id="suggestions" class="suggestions-list"></div>
+    </div>
+
+    <!-- PASTE LINK MAPS ATAU KOORDINAT WA -->
+    <label>🔗 PASTE LINK GOOGLE MAPS / KOORDINAT WA</label>
+    <div class="paste-box">
+      <input type="text" id="paste-input" placeholder="Tempel link maps / -7.0298, 107.5872">
+      <button type="button" onclick="processPastedLink()">Terapkan</button>
+    </div>
+
+    <!-- PETA INTERAKTIF LEAFLET -->
+    <div id="map"></div>
+
+    <label>📍 LOKASI JEMPUT</label>
+    <textarea id="alamat-jemput" rows="2" placeholder="Mengambil titik lokasi..."></textarea>
+
+    <label>🏁 LOKASI TUJUAN</label>
+    <textarea id="alamat-antar" rows="2" placeholder="Pilih/geser titik tujuan di peta..."></textarea>
+
+    <label>💳 METODE PEMBAYARAN</label>
+    <select id="metode-bayar">
+      <option value="Tunai (Cash)">Tunai (Cash)</option>
+      <option value="Transfer / QRIS">Transfer / QRIS</option>
+    </select>
+
+    <label>📝 CATATAN UNTUK DRIVER (OPSIONAL)</label>
+    <input type="text" id="catatan" placeholder="mis. Pakai helm sendiri / depan gerbang" value="-">
+  </div>
+
+  <div class="summary-box">
+    <div class="summary-item">
+      <span>📏 Jarak Estimasi:</span>
+      <strong id="txt-jarak">0.0 km</strong>
+    </div>
+    <div class="summary-item total">
+      <span>💰 Total Tarif:</span>
+      <strong id="txt-tarif">Rp0</strong>
+    </div>
+  </div>
+
+  <button type="button" class="btn-wa" onclick="kirimPesanWA()">
+    📲 Kirim Pesan Orderan ke Driver
+  </button>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <script>
+    const PHONE_ADMIN = "6285934602965";
+
+    let map, markerJemput, markerAntar;
+    let modePin = 'jemput';
+    let searchDebounce = null;
+
+    let latJemput = -7.029822, lngJemput = 107.587289;
+    let latAntar = -7.027000, lngAntar = 107.589000;
+
+    const iconJemput = L.divIcon({
+      className: 'custom-pin-icon',
+      html: '📍',
+      iconSize: [32, 32],
+      iconAnchor: [16, 32]
+    });
+
+    const iconAntar = L.divIcon({
+      className: 'custom-pin-icon',
+      html: '🏁',
+      iconSize: [32, 32],
+      iconAnchor: [16, 32]
+    });
+
+    function initMap() {
+      map = L.map('map').setView([latJemput, lngJemput], 15);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+
+      markerJemput = L.marker([latJemput, lngJemput], { icon: iconJemput, draggable: true }).addTo(map).bindPopup("Titik Jemput");
+      markerAntar = L.marker([latAntar, lngAntar], { icon: iconAntar, draggable: true }).addTo(map).bindPopup("Titik Tujuan");
+
+      markerJemput.on('dragend', function (e) {
+        let coord = e.target.getLatLng();
+        latJemput = coord.lat;
+        lngJemput = coord.lng;
+        reverseGeocode(latJemput, lngJemput, 'jemput');
+        hitungRute();
+      });
+
+      markerAntar.on('dragend', function (e) {
+        let coord = e.target.getLatLng();
+        latAntar = coord.lat;
+        lngAntar = coord.lng;
+        reverseGeocode(latAntar, lngAntar, 'antar');
+        hitungRute();
+      });
+
+      map.on('click', function(e) {
+        if(modePin === 'jemput') {
+          latJemput = e.latlng.lat;
+          lngJemput = e.latlng.lng;
+          markerJemput.setLatLng(e.latlng);
+          reverseGeocode(latJemput, lngJemput, 'jemput');
+        } else {
+          latAntar = e.latlng.lat;
+          lngAntar = e.latlng.lng;
+          markerAntar.setLatLng(e.latlng);
+          reverseGeocode(latAntar, lngAntar, 'antar');
+        }
+        hitungRute();
+      });
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(position => {
+          latJemput = position.coords.latitude;
+          lngJemput = position.coords.longitude;
+
+          latAntar = latJemput + 0.003;
+          lngAntar = lngJemput + 0.003;
+
+          map.setView([latJemput, lngJemput], 15);
+          markerJemput.setLatLng([latJemput, lngJemput]);
+          markerAntar.setLatLng([latAntar, lngAntar]);
+
+          reverseGeocode(latJemput, lngJemput, 'jemput');
+          reverseGeocode(latAntar, lngAntar, 'antar');
+          hitungRute();
+        }, () => {
+          reverseGeocode(latJemput, lngJemput, 'jemput');
+          reverseGeocode(latAntar, lngAntar, 'antar');
+          hitungRute();
+        }, { enableHighAccuracy: true });
+      } else {
+        reverseGeocode(latJemput, lngJemput, 'jemput');
+        reverseGeocode(latAntar, lngAntar, 'antar');
+        hitungRute();
+      }
+    }
+
+    function setMapMode(mode) {
+      modePin = mode;
+      document.getElementById('btn-mode-jemput').className = mode === 'jemput' ? 'map-btn active' : 'map-btn';
+      document.getElementById('btn-mode-antar').className = mode === 'antar' ? 'map-btn active' : 'map-btn';
+    }
+
+    // PENCARIAN TEMPAT DENGAN PRIO LOKASI SEKITAR (BOUNDING BOX BANDUNG & JAWA BARAT)
+    function searchPlaces(query) {
+      clearTimeout(searchDebounce);
+      const suggestionsBox = document.getElementById('suggestions');
+
+      if (!query || query.length < 3) {
+        suggestionsBox.style.display = 'none';
+        return;
+      }
+
+      searchDebounce = setTimeout(() => {
+        // Buat Bounding Box sekitar lokasi aktif (radius ~25 km)
+        let minLat = latJemput - 0.25;
+        let maxLat = latJemput + 0.25;
+        let minLng = lngJemput - 0.25;
+        let maxLng = lngJemput + 0.25;
+
+        // API 1: Nominatim dengan Bounding Box Lokal
+        let url1 = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&viewbox=${minLng},${maxLat},${maxLng},${minLat}&bounded=0&countrycodes=id&limit=6`;
+
+        fetch(url1)
+          .then(res => res.json())
+          .then(data => {
+            suggestionsBox.innerHTML = '';
+            
+            if (data && data.length > 0) {
+              data.forEach(item => {
+                let div = document.createElement('div');
+                div.className = 'suggestion-item';
+                div.innerText = item.display_name;
+                div.onclick = function() {
+                  applyLocation(parseFloat(item.lat), parseFloat(item.lon), item.display_name);
+                  suggestionsBox.style.display = 'none';
+                  document.getElementById('search-input').value = '';
+                };
+                suggestionsBox.appendChild(div);
+              });
+              suggestionsBox.style.display = 'block';
+            } else {
+              // Fallback API 2: Photon Search Engine (Lebih pintar cari Sekolah / PT / Pabrik)
+              fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&lat=${latJemput}&lon=${lngJemput}&limit=5`)
+                .then(res => res.json())
+                .then(pData => {
+                  if(pData && pData.features && pData.features.length > 0) {
+                    pData.features.forEach(f => {
+                      let props = f.properties;
+                      let label = [props.name, props.street, props.city, props.state].filter(Boolean).join(', ');
+                      let div = document.createElement('div');
+                      div.className = 'suggestion-item';
+                      div.innerText = label || props.name;
+                      div.onclick = function() {
+                        applyLocation(f.geometry.coordinates[1], f.geometry.coordinates[0], label);
+                        suggestionsBox.style.display = 'none';
+                        document.getElementById('search-input').value = '';
+                      };
+                      suggestionsBox.appendChild(div);
+                    });
+                    suggestionsBox.style.display = 'block';
+                  } else {
+                    suggestionsBox.style.display = 'none';
+                  }
+                }).catch(() => { suggestionsBox.style.display = 'none'; });
+            }
+          })
+          .catch(() => { suggestionsBox.style.display = 'none'; });
+      }, 350);
+    }
+
+    // PEMBEDA PASTE LINK MAPS / KOORDINAT
+    function processPastedLink() {
+      const val = document.getElementById('paste-input').value.trim();
+      if(!val) return;
+
+      // 1. Cek Koordinat Angka Lansung (-7.0298, 107.5872 atau -7.0298 107.5872)
+      const coordMatch = val.match(/(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)/);
+      
+      // 2. Cek Parameter q= / @lat,lng di URL Google Maps
+      const urlMatch = val.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/) || val.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+
+      if (coordMatch) {
+        applyLocation(parseFloat(coordMatch[1]), parseFloat(coordMatch[2]));
+        document.getElementById('paste-input').value = '';
+      } else if (urlMatch) {
+        applyLocation(parseFloat(urlMatch[1]), parseFloat(urlMatch[2]));
+        document.getElementById('paste-input').value = '';
+      } else {
+        // 3. Jika berupa nama tempat dari link/teks biasa, lempar ke pencarian
+        document.getElementById('search-input').value = val;
+        searchPlaces(val);
+      }
+    }
+
+    function applyLocation(lat, lng, labelText) {
+      if(modePin === 'jemput') {
+        latJemput = lat;
+        lngJemput = lng;
+        markerJemput.setLatLng([lat, lng]);
+        if(labelText) document.getElementById('alamat-jemput').value = labelText;
+        else reverseGeocode(lat, lng, 'jemput');
+      } else {
+        latAntar = lat;
+        lngAntar = lng;
+        markerAntar.setLatLng([lat, lng]);
+        if(labelText) document.getElementById('alamat-antar').value = labelText;
+        else reverseGeocode(lat, lng, 'antar');
+      }
+      map.setView([lat, lng], 16);
+      hitungRute();
+    }
+
+    function reverseGeocode(lat, lng, target) {
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+        .then(res => res.json())
+        .then(data => {
+          if(data && data.display_name) {
+            if(target === 'jemput') document.getElementById('alamat-jemput').value = data.display_name;
+            else document.getElementById('alamat-antar').value = data.display_name;
+          }
+        })
+        .catch(() => {});
+    }
+
+    function hitungRute() {
+      const R = 6371000;
+      const dLat = (latAntar - latJemput) * Math.PI / 180;
+      const dLon = (lngAntar - lngJemput) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(latJemput * Math.PI / 180) * Math.cos(latAntar * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      
+      let jarakMeter = R * c;
+      jarakMeter = Math.round(jarakMeter * 1.20);
+
+      let totalTarif = 0;
+
+      if (jarakMeter <= 4500) {
+        totalTarif = 9000;
+      } else {
+        let sisaMeter = jarakMeter - 4500;
+        let kmUtama = Math.floor(sisaMeter / 1000);
+        let sisaM = sisaMeter % 1000;
+
+        totalTarif = 9000 + (kmUtama * 2000);
+
+        if (sisaM >= 1 && sisaM <= 249) {
+          totalTarif += 500;
+        } else if (sisaM >= 250 && sisaM <= 499) {
+          totalTarif += 1000;
+        } else if (sisaM >= 500 && sisaM <= 749) {
+          totalTarif += 1500;
+        } else if (sisaM >= 750) {
+          totalTarif += 2000;
+        }
+      }
+
+      let jarakKmDisplay = (jarakMeter / 1000).toFixed(1);
+
+      document.getElementById('txt-jarak').innerText = jarakKmDisplay + " km";
+      document.getElementById('txt-tarif').innerText = "Rp" + totalTarif.toLocaleString('id-ID');
+
+      return { jarak: jarakKmDisplay, tarif: totalTarif };
+    }
+
+    function kirimPesanWA() {
+      const nama = document.getElementById('nama').value.trim() || 'Offline';
+      const jemput = document.getElementById('alamat-jemput').value.trim();
+      const antar = document.getElementById('alamat-antar').value.trim();
+      const bayar = document.getElementById('metode-bayar').value;
+      const catatan = document.getElementById('catatan').value.trim() || '-';
+
+      if(!jemput || !antar) {
+        alert('Mohon lengkapi alamat jemput dan tujuan!');
+        return;
+      }
+
+      const calc = hitungRute();
+      const linkJemput = `https://maps.google.com/?q=${latJemput.toFixed(6)},${lngJemput.toFixed(6)}`;
+      const linkAntar = `https://maps.google.com/?q=${latAntar.toFixed(6)},${lngAntar.toFixed(6)}`;
+
+      const pesanWA = 
+`*PESANAN OJEG WA BARU!*
+----------------------------------
+👤 *Nama:* ${nama}
+📍 *Jemput:* ${jemput}
+🗺️ *Rute Jemput:* ${linkJemput}
+🏁 *Tujuan:* ${antar}
+🗺️ *Rute Tujuan:* ${linkAntar}
+📏 *Jarak Estimasi Peta:* ${calc.jarak} km
+💰 *Total Tarif:* Rp${calc.tarif.toLocaleString('id-ID')}
+💳 *Bayar:* ${bayar}
+📝 *Catatan:* ${catatan}
+----------------------------------
+Terima kasih!`;
+
+      const urlWa = `https://wa.me/${PHONE_ADMIN}?text=${encodeURIComponent(pesanWA)}`;
+      window.open(urlWa, '_blank');
+    }
+
+    window.onload = initMap;
+  </script>
+</body>
+</html>
 
     /* Custom Marker Style */
     .custom-pin-icon {
