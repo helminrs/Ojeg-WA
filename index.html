@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pesan Ojeg WA - iqBike</title>
   
-  <!-- Leaflet CSS (Peta Gratis Tanpa API Key) -->
+  <!-- Leaflet CSS (Peta Gratis) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   
   <style>
@@ -23,7 +23,7 @@
     input:focus, textarea:focus { border-color: #2e7d32; }
 
     /* Map Styling */
-    #map { width: 100%; height: 220px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #ccc; }
+    #map { width: 100%; height: 240px; border-radius: 10px; margin-bottom: 10px; border: 1px solid #ccc; }
     
     .map-btn-group { display: flex; gap: 8px; margin-bottom: 12px; }
     .map-btn { flex: 1; padding: 8px; font-size: 11px; font-weight: bold; border-radius: 6px; border: 1px solid #0288d1; background: #e3f2fd; color: #0288d1; cursor: pointer; text-align: center; }
@@ -34,6 +34,7 @@
     .summary-item.total { font-weight: bold; font-size: 16px; color: #2e7d32; border-top: 1px dashed #a5d6a7; padding-top: 5px; margin-top: 5px; }
 
     .btn-wa { width: 100%; padding: 14px; background: #25d366; color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .btn-wa:hover { background: #1ebd56; }
   </style>
 </head>
 <body>
@@ -53,14 +54,14 @@
       <div id="btn-mode-antar" class="map-btn" onclick="setMapMode('antar')">🏁 Atur Pin TUJUAN</div>
     </div>
 
-    <!-- PETA INTERAKTIF -->
+    <!-- PETA INTERAKTIF LEAFLET -->
     <div id="map"></div>
 
     <label>📍 LOKASI JEMPUT</label>
-    <textarea id="alamat-jemput" rows="2" placeholder="Detail jalan/patokan jemput..."></textarea>
+    <textarea id="alamat-jemput" rows="2" placeholder="Mengambil titik lokasi..."></textarea>
 
     <label>🏁 LOKASI TUJUAN</label>
-    <textarea id="alamat-antar" rows="2" placeholder="Detail jalan/patokan tujuan..."></textarea>
+    <textarea id="alamat-antar" rows="2" placeholder="Pilih/geser titik tujuan di peta..."></textarea>
 
     <label>💳 METODE PEMBAYARAN</label>
     <select id="metode-bayar">
@@ -87,22 +88,22 @@
     📲 Kirim Pesan Orderan ke Driver
   </button>
 
-  <!-- Leaflet JS (Peta Gratis) -->
+  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
   <script>
     const PHONE_ADMIN = "6285934602965";
-    const TARIF_MINIMAL = 10000;
-    const TARIF_PER_KM = 2000;
 
     let map, markerJemput, markerAntar;
     let modePin = 'jemput';
 
+    // Lat Lng Awal (Pameungpeuk Bandung sebagai Cadangan)
     let latJemput = -7.029822, lngJemput = 107.587289;
-    let latAntar = -6.966447, lngAntar = 107.585299;
+    let latAntar = -7.027000, lngAntar = 107.589000;
 
     function initMap() {
-      map = L.map('map').setView([latJemput, lngJemput], 13);
+      // Inisialisasi Peta
+      map = L.map('map').setView([latJemput, lngJemput], 15);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap'
@@ -111,6 +112,7 @@
       markerJemput = L.marker([latJemput, lngJemput], { draggable: true }).addTo(map).bindPopup("Titik Jemput");
       markerAntar = L.marker([latAntar, lngAntar], { draggable: true }).addTo(map).bindPopup("Titik Tujuan");
 
+      // Event Drag Marker Jemput
       markerJemput.on('dragend', function (e) {
         let coord = e.target.getLatLng();
         latJemput = coord.lat;
@@ -119,6 +121,7 @@
         hitungRute();
       });
 
+      // Event Drag Marker Antar
       markerAntar.on('dragend', function (e) {
         let coord = e.target.getLatLng();
         latAntar = coord.lat;
@@ -127,6 +130,7 @@
         hitungRute();
       });
 
+      // Event Klik di Atas Peta
       map.on('click', function(e) {
         if(modePin === 'jemput') {
           latJemput = e.latlng.lat;
@@ -142,20 +146,33 @@
         hitungRute();
       });
 
+      // DETEKSI GPS HP PENUMPANG PRESISI
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(position => {
           latJemput = position.coords.latitude;
           lngJemput = position.coords.longitude;
-          map.setView([latJemput, lngJemput], 14);
-          markerJemput.setLatLng([latJemput, lngJemput]);
-          reverseGeocode(latJemput, lngJemput, 'jemput');
-          hitungRute();
-        });
-      }
 
-      reverseGeocode(latJemput, lngJemput, 'jemput');
-      reverseGeocode(latAntar, lngAntar, 'antar');
-      hitungRute();
+          // Default Tujuan diposisikan sedikit dekat di sekitar Lokasi Jemput pengguna (+300 meter)
+          latAntar = latJemput + 0.003;
+          lngAntar = lngJemput + 0.003;
+
+          map.setView([latJemput, lngJemput], 15);
+          markerJemput.setLatLng([latJemput, lngJemput]);
+          markerAntar.setLatLng([latAntar, lngAntar]);
+
+          reverseGeocode(latJemput, lngJemput, 'jemput');
+          reverseGeocode(latAntar, lngAntar, 'antar');
+          hitungRute();
+        }, () => {
+          reverseGeocode(latJemput, lngJemput, 'jemput');
+          reverseGeocode(latAntar, lngAntar, 'antar');
+          hitungRute();
+        }, { enableHighAccuracy: true });
+      } else {
+        reverseGeocode(latJemput, lngJemput, 'jemput');
+        reverseGeocode(latAntar, lngAntar, 'antar');
+        hitungRute();
+      }
     }
 
     function setMapMode(mode) {
@@ -176,28 +193,51 @@
         .catch(() => {});
     }
 
+    // FUNGSI PERHITUNGAN ARGO BARU (PRESISI METRIL)
     function hitungRute() {
-      const R = 6371;
+      const R = 6371000; // Radius bumi dalam meter
       const dLat = (latAntar - latJemput) * Math.PI / 180;
       const dLon = (lngAntar - lngJemput) * Math.PI / 180;
       const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
                 Math.cos(latJemput * Math.PI / 180) * Math.cos(latAntar * Math.PI / 180) *
                 Math.sin(dLon/2) * Math.sin(dLon/2);
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      let jarakKm = R * c;
       
-      jarakKm = Math.round(jarakKm * 1.25 * 10) / 10;
-      if(jarakKm < 1) jarakKm = 1.0;
+      let jarakMeter = R * c;
+      // Koreksi estimasi jalur darat/jalan raya (+20%)
+      jarakMeter = Math.round(jarakMeter * 1.20);
 
-      let totalTarif = TARIF_MINIMAL;
-      if(jarakKm > 3) {
-        totalTarif += Math.ceil(jarakKm - 3) * TARIF_PER_KM;
+      let totalTarif = 0;
+
+      // 1. Minimum 9.000 (1 meter - 4.5 km / 4500 meter)
+      if (jarakMeter <= 4500) {
+        totalTarif = 9000;
+      } else {
+        // Sisa jarak di atas 4500 meter
+        let sisaMeter = jarakMeter - 4500;
+        let kmUtama = Math.floor(sisaMeter / 1000);
+        let sisaM = sisaMeter % 1000;
+
+        totalTarif = 9000 + (kmUtama * 2000);
+
+        // Aturan Penambahan Sisa Meter
+        if (sisaM >= 1 && sisaM <= 249) {
+          totalTarif += 500;
+        } else if (sisaM >= 250 && sisaM <= 499) {
+          totalTarif += 1000;
+        } else if (sisaM >= 500 && sisaM <= 749) {
+          totalTarif += 1500;
+        } else if (sisaM >= 750) {
+          totalTarif += 2000;
+        }
       }
 
-      document.getElementById('txt-jarak').innerText = jarakKm.toFixed(1) + " km";
+      let jarakKmDisplay = (jarakMeter / 1000).toFixed(1);
+
+      document.getElementById('txt-jarak').innerText = jarakKmDisplay + " km";
       document.getElementById('txt-tarif').innerText = "Rp" + totalTarif.toLocaleString('id-ID');
 
-      return { jarak: jarakKm.toFixed(1), tarif: totalTarif };
+      return { jarak: jarakKmDisplay, tarif: totalTarif };
     }
 
     function kirimPesanWA() {
